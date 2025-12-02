@@ -1,0 +1,584 @@
+%File: formatting-instruction.tex
+\documentclass[letterpaper]{article}
+\usepackage{aaai}
+\usepackage{times}
+\usepackage{helvet}
+\usepackage{courier}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{makecell}
+\usepackage{booktabs}
+\usepackage{natbib}
+\frenchspacing
+\setlength{\pdfpagewidth}{8.5in}
+\setlength{\pdfpageheight}{11in}
+\pdfinfo{
+/Title (Insert Your Title Here)
+/Author (Put All Your Authors Here, Separated by Commas)}
+\setcounter{secnumdepth}{0}  
+ \begin{document}
+% The file aaai.sty is the style file for AAAI Press 
+% proceedings, working notes, and technical reports.
+%
+
+
+\title{CS5489 Group Porject  \\Construction and performance evaluation of machine translation model on wmt14 dataset}
+
+\author{
+    Junbiao Liang$^1$, Haoyu Dai$^2$,Qijin Zhang$^3$ \\
+    $^1$$^2$$^3$Department of Computing, City University of Hong Kong, Hong Kong, China \\
+    \email{59783684$^1$, 59883124$^2$, 59800570$^3$}
+}
+
+\maketitle
+\begin{abstract}
+\begin{quote}
+This project is a machine translation practice task for CS5489 course, which aims to design a comparative experiment based on the WMT14 dataset to explore the feasibility of different technical paths. On the one hand, the experiment builds a traditional deep learning model as a baseline; On the other hand, selecting Facebook's mBART sequence to the sequence model and using LoRA technology for targeted fine-tuning can avoid the high resource consumption problem of full fine-tuning. The experimental results using BLEU value as the evaluation criterion show that the mBART model with multilingual pre training advantages performs outstandingly in translation accuracy and fluency after LoRA fine-tuning, and its BLEU value is significantly ahead of traditional deep learning models. This report provides a detailed overview of the entire process of model construction, LoRA fine-tuning implementation, and result comparison, which can provide clear references for students to conduct similar large-scale model fine-tuning and machine translation comparison experiments.
+\end{quote}
+\end{abstract}
+
+\section{Introduction}
+Machine translation (MT) is a core task in natural language processing (NLP), aimed at automatically converting text from one natural language to another while preserving the original semantic information and ensuring grammatical fluency. With the rapid development of deep learning, machine translation has evolved from traditional statistical methods to data-driven neural network models, achieving significant breakthroughs in translation quality and practicality \cite{Sutskever2014}. Nowadays, it plays a crucial role in cross-linguistic communication, international business, and academic exchange, becoming an indispensable technological support for breaking language barriers.
+
+The WMT (Machine Translation Workshop) dataset series, particularly WMT14, has become a recognized benchmark for evaluating machine translation systems \cite{Bojar2014}. It provides a high-quality parallel corpus covering multiple language pairs, enabling fair comparison and validation of different translation models. WMT14 is an ideal experimental platform for exploring the performance of various technological paths in academic research and course projects.
+
+In recent years, machine translation technology has mainly been divided into two directions: traditional deep learning models and fine-tuning methods for large language models (LLMs). Traditional deep learning models represented by recurrent neural networks (RNNs) and basic Transformers have laid the foundation for neural machine translation, with mature implementation frameworks and clear technical logic \cite{Vaswani2017}. At the same time, with the rise of large pre-trained models, efficient parameter tuning techniques such as Low-Rank Adaptation (LoRA) have emerged \cite{Hu2022}. LoRA enables large models to efficiently adapt to specific tasks with minimal computational resources, avoiding the high cost of full-parameter fine-tuning, while utilizing the powerful language understanding and generation capabilities of pre-trained models.
+
+In order to systematically compare the performance differences between these two technical paths in machine translation, the CS5489 team conducted experimental research based on the WMT14 dataset. We use traditional deep learning models and LoRA fine-tuned mBART models (the sequence-to-sequence model proposed by Facebook) to construct a translation system, and use BLEU (Bilingual Evaluation Understudy) as the core evaluation metric to quantify translation quality \cite{Papineni2002}. The project aims to validate the practical effectiveness of different models in the WMT14 benchmark, provide reference for technology selection in similar machine translation tasks, and deepen the understanding of neural machine translation and parameter-efficient fine-tuning techniques through practice.
+
+\section{Dataset Description}
+The machine translation experiment of this project is based on the WMT14 (Workshop on Machine Translation 2014) benchmark dataset, which is recognized as a classic evaluation dataset in the field of machine translation. It covers high-quality parallel corpora of multiple language pairs and is widely used in academic research and course practice, providing standardized support for fair comparison of different translation models in multilingual scenarios \cite{Bojar2014}.
+
+\subsection{Dataset Info}
+The core advantage of the WMT14 dataset lies in its rich multilingual coverage ability. In order to comprehensively verify the model's multilingual translation performance, this project uses all the language pairs provided in the dataset (including English German, English French, English Russian, English Spanish, German English, French English, and other officially included parallel corpus directions), covering multiple language families such as Germanic and Romance languages, which can fully test the model's adaptability to different language grammar structures and semantic expression differences. The dataset is divided into three parts by function: training set, validation set, and testing set. The overall composition is as follows:
+
+\begin{itemize}
+    \item Training set: It integrates parallel corpora from multiple authoritative sources such as Europarl v7, Common Crawl, News Commentary v9, UN Parallel Corpus, etc. The total number of training corpora for all language pairs is about 16 million pairs of parallel sentences, and the size of corpora for different language pairs may vary slightly depending on actual usage scenarios (such as about 4.5-5 million pairs for English French and English German languages, and about 1-30 million pairs for small language related languages), providing sufficient multilingual semantic and grammar knowledge reserves for model training;
+    \item Validation set: Using the official unified dev set of WMT14, each language corresponds to approximately 2000-3000 pairs of parallel sentences, used for hyperparameter tuning, training effect monitoring, and early stopping judgment during the full training process, to avoid overfitting caused by differences in data distribution among multiple languages;
+    \item Test set: Using the official WMT14 test set (newstest2014), each language pair contains approximately 2500-2800 pairs of parallel sentences from the news field, covering topics such as current affairs, technology, culture, and people's livelihood in multiple real-life scenarios. It can comprehensively evaluate the generalization ability and practical application effect of the two models in different language translation tasks after full training.
+\end{itemize}
+
+\subsection{Data Pre-Processing}
+This project is based on the WMT14 multilingual parallel corpus for experimentation, with the target language being English, covering five language pairs: Czech English (cs en), German English (de en), French English (fr en), Hindi English (hi en), and Russian English (ru en). To ensure data quality and adapt to model training requirements, the preprocessing process strictly follows standardized steps, forming a complete chain from format conversion, cleaning, word segmentation to multilingual integration, as follows:
+
+\subsubsection{Data format conversion} 
+The original data comes from the HuggingFace wmt/wmt14 dataset, stored in Arrow efficient caching format, with a field structure of {"translation": {"source language code": "source language text", "en": "English target text"}. Although this format is convenient for loading the dataset, it is not easy for manual processing operations such as cleaning and word segmentation. Therefore, it is first converted to plain text format through a custom script scripts/arrow\_to\_txt. py. During the conversion process, the input data is taken from the HuggingFace dataset cache file in the data/wmt\_wmt14 directory, and the output is divided into independent directories by language pair and stored in processedw\_mt14/ {src}- Under the path of {tgt}/, three sets of plain text files are generated for each language pair: training set (train. {src}, train. en), validation set (valid. {src}, valid. en), and test set (test. {src}, test. en). The text encoding is uniformly UTF-8 to ensure multilingual character compatibility. At the same time, the script supports flexible parameter configuration, which can specify the use of data subsets through -- mode subset, or limit the number of training set sentences through -- max train lines to adapt to resource constraints in different experimental scenarios.
+
+\subsubsection{Data cleaning} 
+To filter out low-quality and invalid samples, reduce the interference of noise on model training, and improve data effectiveness, the script scripts/clean\_compus.cy is used to perform multidimensional cleaning operations on the converted plain text data. Firstly, perform empty sentence filtering by directly removing sentence pairs with empty source ({src}) or target (en) to avoid invalid samples occupying computing resources; Secondly, implement length filtering by setting a sentence length threshold of 3 to 256 tokens, which not only filters out meaningless short sentences but also limits long sentences to balance model training efficiency and video memory usage; Subsequently, length ratio filtering is performed to calculate the sentence length ratio between the source and target ends. Sentence pairs with a ratio exceeding 3.0 are removed, and samples with poor alignment quality and semantic mismatch are screened out; Finally, noise cleaning is carried out to remove residual HTML/XML tags and meaningless special symbol combinations from the text. If the sentence becomes empty after cleaning, it is directly discarded. After cleaning, generate a file with the suffix. clean. {lang} in the storage directory of each language pair as the standard input for subsequent word segmentation processing.
+    
+\subsubsection{SentencePiece BPE}
+To address the issue of Out of Log Words (OOV), while balancing vocabulary size and sequence length, and improving the model's ability to adapt to multilingual vocabulary, the SentencePiece tool is used to implement Byte Pair Encoding (BPE) segmentation. Firstly, the shared BPE word segmentation model is trained using the script scripts/train\_dentencepiece.cy. The training data is based on the training set of all language pairs, and the text is cleaned to ensure that the segmentation rules can cover multilingual vocabulary features. At the same time, the vocabulary size is set to 32000 to avoid vocabulary redundancy while ensuring vocabulary coverage, laying the foundation for cross language knowledge transfer. Subsequently, using the trained BPE model (stored in the processedw\_mt14/spm/spm. model path), the cleaned training set, validation set, and test set are uniformly segmented using the script scripts/apply\_dentencepiece.cy to split the continuous natural language text into discrete subword token sequences. After word segmentation is completed, generate {split}. src (source language token sequence) and {split}. tgt (target language token sequence) files to provide a unified format standard for model input, ensuring that data from different language pairs can adapt to the subsequent training process.
+
+\subsubsection{Multi language corpus construction}
+In order to realize the translation task of five language pairs in a single model at the same time, it is necessary to conduct multilingual integration processing on the corpus after word segmentation. The core steps are adding language tags and merging corpus: adding corresponding language identification tags at the beginning of each source language sentence, such as adding<cs>and<de>to the source sentence of the CS EN language pair, and adding<fr>,<hi>, and<ru>tags to the fr en, hi en, and ru en language pairs, respectively, so that the model can accurately distinguish the input language type through tags and adapt to the task requirements of multilingual translation; Subsequently, the training set, validation set, and test set of the five language pairs were merged into a unified multilingual corpus using the script/build\_rultilingual\_compus.cy, and stored in the processedw\_mt14/multilingual/directory. Finally, six integrated files were generated: train.src, train.tgt, valid.src, valid.tgt, test.src, and test.tgt. This design achieves precise recognition of input language through language tags, and utilizes a shared vocabulary and unified format to achieve cross language sharing of model parameters, which can effectively improve the training effectiveness of low resource languages such as hi en.
+
+\subsubsection{Data statistics and quality verification}
+After the preprocessing process is completed, statistical analysis of multilingual corpora is performed using the script `analysis/dataset\_stats.py` to verify data quality and provide a foundation for subsequent model performance analysis. The core statistical results of the training set are shown in Table \ref{tab:dataset_stats}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{WMT14 multilingual training set statistical results after preprocessing}
+  \label{tab:dataset_stats}
+  \resizebox{\linewidth}{!}{%
+    \begin{tabular}{@{}ccccc@{}}
+      \toprule
+      Language Pairs & Effective Sentence Pairs & Avg. Src Token Length & Avg. Tgt (English) Token Length & Data Type \\
+      \midrule
+      cs–en & 294,966 & 31.1 & 28.9 & High Resources \\
+      de–en & 297,505 & 34.4 & 30.4 & High Resources \\
+      fr–en & 297,874 & 37.6 & 30.4 & High Resources \\
+      hi–en & 6,671  & 15.8 & 7.1  & Low Resources \\
+      ru–en & 288,795 & 37.7 & 28.4 & High Resources \\
+      \bottomrule
+    \end{tabular}
+  }
+\end{table}
+
+\section{Models and Methods}
+This chapter details the three model architectures adopted in this project for multilingual machine translation tasks, including their core structures, key components, and design adaptations for the WMT14 dataset. The models selected cover traditional deep learning paradigms and modern large model fine-tuning approaches, enabling systematic performance comparisons across different technical paths.
+
+\subsection{RNN Seq2Seq with Attention}
+The RNN Seq2Seq model with Attention serves as a classic baseline for neural machine translation, consisting of an encoder-decoder framework enhanced by an attention mechanism to address long-distance dependency challenges.
+
+\subsubsection{Encoder Architecture}
+The encoder employs a bidirectional Long Short-Term Memory (BiLSTM) network to capture contextual information from source language sequences. It comprises 2 stacked LSTM layers, each with a hidden state dimension of 512. For each token in the source sequence, the BiLSTM processes the input in both forward and backward directions, concatenating the hidden states from both directions to form a comprehensive contextual representation. A dropout layer with a rate of 0.3 is inserted between LSTM layers to mitigate overfitting. The source embedding layer maps each subword token (from the SentencePiece BPE vocabulary) to a 512-dimensional dense vector, which serves as the input to the BiLSTM network.
+
+\subsubsection{Decoder Architecture}
+The decoder is constructed with a unidirectional LSTM network (1 layer, hidden dimension 512) to generate target language sequences autoregressively. It maintains a hidden state that evolves iteratively, using the previous target token and contextual information from the encoder to predict the next token. The target embedding layer shares the same dimension (512) as the source embedding layer, ensuring consistent feature space mapping. A fully connected layer with a softmax activation function is appended to the decoder output to produce probability distributions over the target vocabulary.
+
+\subsubsection{Attention Mechanism}
+A Luong-style dot-product attention mechanism is integrated into the decoder to dynamically weight the encoder's contextual representations. At each decoding step, the attention mechanism computes similarity scores between the decoder's current hidden state and all encoder hidden states, generating attention weights that highlight relevant source tokens. The weighted sum of encoder hidden states (context vector) is concatenated with the decoder's current hidden state, providing context-aware information for target token prediction. This design effectively alleviates the vanishing gradient problem in long sequences and improves translation accuracy for complex sentence structures.
+
+\subsection{Transformer}
+The Transformer model abandons recurrent structures and relies entirely on self-attention mechanisms to model contextual dependencies, achieving parallelizable training and superior long-range sequence modeling capabilities.
+
+\subsubsection{Overall Architecture}
+The Transformer consists of 6 encoder layers and 6 decoder layers, with a model dimension ($d_{\text{model}}$) of 512. Key hyperparameters include: number of attention heads ($h$) = 8, feed-forward network inner dimension ($d_{\text{ff}}$) = 2048, and dropout rate = 0.1. Both encoder and decoder layers are equipped with residual connections and layer normalization to stabilize training and accelerate convergence.
+
+\subsubsection{Encoder Layer}
+Each encoder layer comprises two sub-layers: multi-head self-attention and position-wise feed-forward network. The multi-head self-attention mechanism splits the input into 8 parallel subspaces, computing scaled dot-product attention for each subspace and concatenating the results to capture diverse contextual relationships. The position-wise feed-forward network applies a two-layer linear transformation (512 → 2048 → 512) with a ReLU activation function, enabling non-linear transformations of token representations independently.
+
+\subsubsection{Decoder Layer}
+The decoder layer includes three sub-layers: masked multi-head self-attention, multi-head encoder-decoder attention, and position-wise feed-forward network. The masked self-attention mechanism prevents the decoder from accessing future tokens during autoregressive generation, ensuring causal consistency. The encoder-decoder attention layer computes attention weights between decoder hidden states and encoder outputs, similar to the attention mechanism in the RNN Seq2Seq model, to align source and target sequences.
+
+\subsubsection{Positional Encoding}
+Since the Transformer lacks inherent sequential inductive bias, sinusoidal positional encoding is added to the embedding layer outputs. The positional encoding vectors are computed using sine and cosine functions of different frequencies, injecting sequence order information into the model and enabling it to distinguish token positions.
+
+\subsection{LoRA-Fine-Tuned MBART}
+The third model leverages the pre-trained multilingual model \textit{facebook/mbart-large-50-many-to-many-mmt} (MBART-50) with Low-Rank Adaptation (LoRA) for parameter-efficient fine-tuning, balancing performance and computational cost.
+
+\subsubsection{MBART-50 Base Model}
+MBART-50 is a sequence-to-sequence pre-trained model supporting 50 languages, featuring a Transformer-based encoder-decoder architecture with 12 encoder layers, 12 decoder layers, $d_{\text{model}}$ = 1024, 16 attention heads, and a SentencePiece vocabulary of 250,000 tokens. It is pre-trained on large-scale multilingual parallel corpora, enabling strong cross-language transfer capabilities and robust performance on low-resource language pairs—making it well-suited for the WMT14 multilingual translation task.
+
+\subsubsection{LoRA Adaptation Mechanism}
+LoRA reduces the number of trainable parameters by inserting low-rank matrices into the attention layers of the pre-trained model. Specifically, for each attention layer's weight matrix $W \in \mathbb{R}^{d \times k}$, LoRA decomposes it into two low-rank matrices $A \in \mathbb{R}^{d \times r}$ and $B \in \mathbb{R}^{r \times k}$ (where $r$ is the rank, set to 8 in this project). The updated weight matrix is expressed as $W + BA$, with only $A$ and $B$ being trainable during fine-tuning, while the pre-trained parameters of MBART-50 are frozen. This design reduces the number of trainable parameters from billions to millions, significantly lowering memory usage and training time without compromising model performance.
+
+\subsubsection{Task-Specific Adaptation}
+To adapt MBART-50 to the WMT14 multilingual translation task, the following adjustments are made: (1) The model's built-in SentencePiece tokenizer is used directly, ensuring consistency with pre-training tokenization rules; (2) Language tags (e.g., `<cs>`, `<de>`) are appended to source sequences, aligning with MBART-50's multilingual input format; (3) The final classification layer is fine-tuned jointly with LoRA matrices to optimize target vocabulary prediction for English translation tasks. The LoRA adaptation is applied to all multi-head attention layers of the encoder and decoder, maximizing the model's ability to adapt to the target task while preserving pre-trained knowledge.
+
+\section{Traditional Deep Learning Model Experiment}
+The purpose of this experiment is to verify the basic performance of two classic neural machine translation architectures, RNN Seq2Seq+Attention and Transformer, on the WMT14 multilingual translation task (covering five language pairs: cs en, de en, fr en, hi en, ru en), and to build a reliable task baseline for the entire project; At the same time, it provides a fair and comparable benchmark reference for subsequent LoRA fine-tuning experiments, in order to clearly present the performance differences of different technical paths; In addition, by analyzing the architectural characteristics of two traditional models and their impact on the translation performance of high/low resource languages, the advantages and inherent limitations of traditional deep learning models in multilingual translation scenarios are clarified, providing a basis for subsequent experimental design and result analysis.
+
+\subsection{Experiment Environment}
+The hardware configuration and software dependencies of the experiment are kept stable and consistent to ensure the reliability and repeatability of the model training and evaluation process. The specific configuration details are shown in Table \ref{tab:experimental_environment}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Experimental Environment Configuration Details}
+  \label{tab:experimental_environment}
+  \resizebox{\linewidth}{!}{
+    \begin{tabular}{@{}cl@{}}
+      \toprule
+      Configuration Type & Specific Information \\
+      \midrule
+      \multirow{3}{*}{Hardware} & GPU: NVIDIA RTX 3090 24GB (1 unit) \\
+      & CPU: Intel Core i7-12700K (16C/32T) \\
+      & Memory: 64GB DDR4 3200MHz; Storage: 1TB SSD \\
+      \midrule
+      \multirow{6}{*}{Software} & Programming Language: Python 3.9.16 \\
+      & Core Frameworks: PyTorch 1.13.1, CUDA 11.7, cuDNN 8.5.0 \\
+      & Data Libs: Hugging Face Datasets 2.10.1, SentencePiece 0.1.99 \\
+      & Eval Tools: SacreBLEU 2.3.1, NLTK 3.8.1 \\
+      & Other Dependencies: NumPy 1.24.3, Pandas 2.0.2, Matplotlib 3.7.1 \\
+      & OS: Ubuntu 20.04 LTS \\
+      \bottomrule
+    \end{tabular}
+    }
+\end{table}
+
+\subsection{Evaluation Metrics}
+To comprehensively and objectively measure the translation quality of the model, this experiment adopts the two mainstream automatic evaluation indicators in the field of machine translation - BLEU and METEOR. Through the complementary logic of surface n-gram matching and deep semantic matching, the evaluation bias of a single indicator is reduced. The following explains the core principles and calculation methods of the two major indicators:
+
+\subsubsection{BLEU (Bilingual Evaluation Understudy)}
+BLEU focuses on n-gram accuracy and measures the surface matching degree between candidate translations and reference translations through geometric averaging and short translation penalty mechanisms. Its core advantages are high computational efficiency and stable results.
+
+- \textbf{Key Definitions}:
+
+  - $P_n$: n-gram clipped precision (the number of matching n-grams in the candidate translation relative to the reference, capped by the maximum occurrence of the n-gram in the reference);
+  
+  - $w_n$: Weight of n-gram (equal weight adopted in the experiment, $w_n=0.25$ for $n=1,2,3,4$);
+  
+  - $BP$: Brevity penalty ($BP \in [0,1]$, closer to 1 when the candidate translation length is closer to the reference).
+
+- \textbf{Calculation Formulas}:
+$$
+\text{BLEU} = BP \times \exp\left( \sum_{n=1}^4 w_n \cdot \log P_n \right)
+$$
+$$
+BP = 
+\begin{cases} 
+1 & \text{if } l_c \geq l_r, \\
+\exp\left( 1 - \frac{l_r}{l_c} \right) & \text{if } l_c < l_r,
+\end{cases}
+$$
+where $l_c$ is the length of the candidate translation, and $l_r$ is the length of the reference translation.
+
+- \textbf{Experimental Configuration}: Calculated using the SacreBLEU tool with tokenization=13a standard, covering 1-4 grams for multilingual text adaptation.
+
+\subsubsection{METEOR (Metric for Evaluation of Translation with Explicit Ordering)}
+METEOR is an optimized supplement to BLEU, with the core improvement being the introduction of a semantic matching and recall balance mechanism, which is more in line with the evaluation logic of human translation quality.
+
+- \textbf{Key Definitions}:
+
+  - $P$: 1-gram precision (number of matched 1-grams / total number of 1-grams in the candidate translation);
+  
+  - $R$: 1-gram recall (number of matched 1-grams / total number of 1-grams in the reference translation);
+  
+  - $c$: Number of contiguous chunks formed by matched 1-grams in the candidate translation;
+  
+  - $m$: Total number of matched 1-grams.
+
+- \textbf{Calculation Formulas}:
+$$
+F_1 = \frac{2PR}{P+R}
+$$
+$$
+\text{chunk penalty} = 0.5 \times \left( \frac{c}{m} \right)^3
+$$
+$$
+\text{METEOR} = F_1 \times (1 - \text{chunk penalty})
+$$
+where "matching" includes exact matching (exact word consistency) and loose matching (synonyms, morphological variations based on WordNet).
+
+- \textbf{Experimental Configuration}: Implemented via the NLTK library, with semantic matching based on WordNet 3.0, and chunk penalty calculated using the default formula.
+
+\subsubsection{Training Process Visualization}
+To analyze the training dynamics and convergence characteristics of the RNN Seq2Seq + Attention and Transformer models, three sets of training loss curves are visualized: a combined plot for direct comparison and separate plots for detailed observation of each model’s learning trajectory. All curves record loss values at each logged global step, reflecting the models’ adaptation to training data over time.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{loss_curves.png} % 替换为合并图路径
+  \caption{Training Loss Curves (per logged step) of RNN Seq2Seq + Attention and Transformer}
+  \label{fig:combined_training_loss}
+\end{figure}
+
+Figure \ref{fig:combined_training_loss} shows the overall comparison: the RNN Seq2Seq + Attention model (blue) starts with a training loss of around 6, dropping rapidly to 3–4 within the first 2000 steps, and maintains stable fluctuations at this level thereafter. In contrast, the Transformer (orange) begins with a significantly higher initial loss (close to 9) and decreases more gradually, stabilizing at 5–6 with larger and more frequent fluctuations throughout the 20,000-step training process. The two curves overlap briefly between 2000–5000 steps, after which the RNN model consistently maintains a lower loss, indicating tighter fitting to the training data in this experimental setup.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{seq2seq_v2_loss.png} % 替换为Seq2Seq单独图路径
+  \caption{Seq2Seq Training Loss (per logged step)}
+  \label{fig:seq2seq_training_loss}
+\end{figure}
+
+The detailed view of the RNN Seq2Seq + Attention model (Figure \ref{fig:seq2seq_training_loss}) reveals its rapid initial convergence: within the first 1000 steps, the loss plummets from 6 to around 3, followed by minor fluctuations between 2.5 and 5. This pattern suggests the model quickly grasps core translation patterns and maintains stable parameter updates, with small loss spikes likely caused by batch-specific noise in the training data. The curve stabilizes after 5000 steps, indicating early convergence.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{transformer_v3_loss.png} % 替换为Transformer单独图路径
+  \caption{Transformer Training Loss (per logged step)}
+  \label{fig:transformer_training_loss}
+\end{figure}
+
+The individual loss curve of the Transformer (Figure \ref{fig:transformer_training_loss}) highlights its distinct learning behavior: despite a high initial loss (around 9), it shows a steady downward trend, with fluctuations gradually reducing, but remaining more pronounced than the RNN model. This sustained volatility may stem from its larger parameter scale and parallel self-attention mechanism, which require more steps to stabilize gradient updates. By 20,000 steps, the Transformer’s loss stabilizes around 5, reflecting effective learning but slower convergence compared to the RNN architecture.
+
+Together, these curves demonstrate that while the RNN Seq2Seq + Attention model converges faster and fits training data more tightly, the Transformer exhibits a more gradual learning process with higher initial instability—traits that align with their architectural differences in handling sequential dependencies and parallel computation.
+
+\subsubsection{Evaluation results for each language}
+This experiment evaluated the translation performance of Seq2Seq and Transformer models on five languages (cs en, de en, fr en, hi en, ru en) using BLEU and METEOR as core metrics. The results are as follows:
+
+The Seq2Seq model shows significant differences in performance across language pairs: overall, the model achieves the best performance on fr en language pairs (BLEU=4.04, METEOR=0.155), followed by cs en (BLEU=4.03, METEOR=0.147), both of which belong to moderate performance; The scores of de en and ru en are relatively low (BLEU of 3.01 and 2.06, respectively), and the low performance of ru en may be related to the complex morphology and special grammar rules of Russian; The score of the hi en language pair is extremely low (BLEU=0.07, METEOR=0.025), mainly due to insufficient training data, which makes it difficult for the model to learn effective translation patterns. Detailed results are shown in Table \ref{tab:seq2seq_results}.
+
+In contrast, the Transformer model performed significantly abnormally on all language pairs, with BLEU scores ranging from 0.0007-0.0013 and METEOR scores of approximately 0.028-0.031, far lower than the Seq2Seq model. Based on the analysis of the training process, this phenomenon may be due to serious underfitting problems in the Transformer model, which is speculated to be related to the large size of the model parameters but insufficient training data, insufficient training epochs, or improper optimizer parameter settings, resulting in the model failing to effectively learn the mapping rules between language pairs. Detailed results are shown in Table \ref{tab:transformer_results}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Evaluation results of Seq2Seq model on different language pairs}
+  \label{tab:seq2seq_results}
+  \resizebox{\linewidth}{!}{
+    \begin{tabular}{ccccc}
+      \toprule
+      Model & Language Pair & BLEU & METEOR & Analysis \\
+      \midrule
+      \multirow{5}{*}{Seq2Seq} & cs-en & 4.03 & 0.147 & Medium performance \\
+      & de-en & 3.01 & 0.120 & Medium performance \\
+      & fr-en & 4.04 & 0.155 & Best performance among all pairs \\
+      & hi-en & 0.07 & 0.025 & Extremely low, limited by training data \\
+      & ru-en & 2.06 & 0.107 & Relatively low, due to complex morphology \\
+      \bottomrule
+    \end{tabular}
+  }
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Evaluation results of Transformer model on different language pairs}
+  \label{tab:transformer_results}
+  \resizebox{\linewidth}{!}{
+    \begin{tabular}{ccccc}
+      \toprule
+      Model & Language Pair & BLEU & METEOR & Analysis \\
+      \midrule
+      \multirow{5}{*}{Transformer} & cs-en & 0.0008 & 0.029 & Severe underfitting \\
+      & de-en & 0.0009 & 0.031 & Severe underfitting \\
+      & fr-en & 0.0007 & 0.028 & Severe underfitting \\
+      & hi-en & 0.0010 & 0.030 & Severe underfitting \\
+      & ru-en & 0.0013 & 0.029 & Severe underfitting \\
+      \bottomrule
+    \end{tabular}
+  }
+\end{table}
+
+\subsubsection{Result Analysis}
+The Seq2Seq model shows basic translation performance on most language pairs, with BLEU values ranging from 2-4, and overall performance meets expectations. Among them, the performance of the fr en language pair is the most outstanding, which is closely related to the linguistic characteristics of French and English - both belong to the Germanic Romance branch of the Indo European language family, with similar grammatical structures and high lexical overlap, making it easier for the model to learn effective translation mapping rules. In contrast, the performance of the hi en language pair is the worst, mainly due to the severe lack of training data (only 6671 sentences), making it difficult for the model to capture the deep associations between the two languages; The lower score of the ru en language pair is due to the complexity of Russian itself: it has rich morphological changes and uses the Cyrillic alphabet system, which is significantly different from English language and increases the difficulty of learning the model.
+
+The performance of the Transformer model showed significant abnormalities, with BLEU values close to 0 for all language pairs, indicating a serious pattern collapse problem. Through observation of the output file, it was found that the model tends to generate the same sentence for almost all inputs (such as "How do you think???"), failing to form effective translation ability. This phenomenon may be caused by multiple factors: firstly, the training process may not be sufficient, and the batch\_size=32 used in the experiment is too small for the Transformer, failing to form a sufficiently large effective batch to support model convergence; Secondly, the learning rate scheduling mechanism may not have taken effect correctly, resulting in parameter updates not reaching the optimal state; In addition, the model capacity (6 layers x 512 dimensions) may not match the current data size, and excessive capacity may cause the model to overfit high-frequency patterns in the training data, rather than learning general translation rules; Finally, there may be interruptions during the training process, and the saved checkpoints may be early versions that have not yet converged, further exacerbating performance anomalies.
+
+Overall, the Seq2Seq model performs more stably under existing experimental conditions, and its performance differences are mainly influenced by language similarity and data size; The abnormal performance of the Transformer model suggests the need for optimization in training strategies, parameter configuration, and other aspects to fully unleash its architectural potential.
+
+\subsubsection{Multi language comparative analysis}
+The experimental results based on the Seq2Seq model show significant differences in translation difficulty among different language pairs, ranked from easy to difficult as follows:
+
+The fr-en language performs the best (BLEU=4.04), mainly because French and English belong to the Indo European language family, with similar grammatical structures and word order. The natural correlation between languages reduces the learning threshold of the model. Following closely behind is cs-en (BLEU=4.03), although Czech language has complex grammatical phenomena such as case changes, sufficient training data supports the model's capture of language patterns, maintaining high performance.
+
+The de-en language pair (BLEU=3.01) has moderate difficulty, and the unique word order differences in German (such as verb postposition) increase translation complexity, resulting in slightly inferior performance compared to the first two. The difficulty of the ru-en language pair (BLEU=2.06) has further increased, and the rich morphological changes in Russian (such as verb conjugation and noun case changes) and significant differences between the Cyrillic alphabet system and English pose challenges to the model's generalization ability.
+
+The hi-en language pair (BLEU=0.07) has the highest difficulty, except for Hindi and English belonging to different language families and having completely heterogeneous writing systems. The severe lack of training data (only 6671 sentences) makes it a key factor limiting performance, making it difficult for the model to learn effective cross language mapping rules.
+To quantify the impact of data volume on translation performance, the data utilization efficiency of different language pairs was analyzed using the "BLEU contribution per 10000 sentences" metric (i.e. the ratio of BLEU value to training sentence count x 10000). The results are shown in the following table:
+
+The experimental results based on the Seq2Seq model show significant differences in translation difficulty among different language pairs, ranked from easy to difficult as follows:
+
+The fr-en language performs the best (BLEU=4.04), mainly because French and English belong to the Indo European language family, with similar grammatical structures and word order. The natural correlation between languages reduces the learning threshold of the model. Following closely behind is cs-en (BLEU=4.03), although Czech language has complex grammatical phenomena such as case changes, sufficient training data supports the model's capture of language patterns, maintaining high performance.
+
+The de-en language pair (BLEU=3.01) has moderate difficulty, and the unique word order differences in German (such as verb postposition) increase translation complexity, resulting in slightly inferior performance compared to the first two. The difficulty of the ru-en language pair (BLEU=2.06) has further increased, and the rich morphological changes in Russian (such as verb conjugation and noun case changes) and significant differences between the Cyrillic alphabet system and English pose challenges to the model's generalization ability.
+
+The hi-en language pair (BLEU=0.07) has the highest difficulty, except for Hindi and English belonging to different language families and having completely heterogeneous writing systems. The severe lack of training data (only 6671 sentences) makes it a key factor limiting performance, making it difficult for the model to learn effective cross language mapping rules.
+To quantify the impact of data volume on translation performance, the data utilization efficiency of different language pairs was analyzed using the "BLEU contribution per 10000 sentences" metric (i.e. the ratio of BLEU value to training sentence count x 10000). The results are shown in the following table:
+
+The experimental results based on the Seq2Seq model show significant differences in translation difficulty among different language pairs, ranked from easy to difficult as follows:
+
+The fr-en language performs the best (BLEU=4.04), mainly because French and English belong to the Indo European language family, with similar grammatical structures and word order. The natural correlation between languages reduces the learning threshold of the model. Following closely behind is cs-en (BLEU=4.03), although Czech language has complex grammatical phenomena such as case changes, sufficient training data supports the model's capture of language patterns, maintaining high performance.
+
+The de-en language pair (BLEU=3.01) has moderate difficulty, and the unique word order differences in German (such as verb postposition) increase translation complexity, resulting in slightly inferior performance compared to the first two. The difficulty of the ru-en language pair (BLEU=2.06) has further increased, and the rich morphological changes in Russian (such as verb conjugation and noun case changes) and significant differences between the Cyrillic alphabet system and English pose challenges to the model's generalization ability.
+
+The hi-en language pair (BLEU=0.07) has the highest difficulty, except for Hindi and English belonging to different language families and having completely heterogeneous writing systems. The severe lack of training data (only 6671 sentences) makes it a key factor limiting performance, making it difficult for the model to learn effective cross language mapping rules.
+To quantify the impact of data volume on translation performance, the data utilization efficiency of different language pairs was analyzed using the "BLEU contribution per 10000 sentences" metric (i.e. the ratio of BLEU value to training sentence count x 10000). The results are shown in Table \ref{tab:data_volume_impact}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Data volume and BLEU contribution per 10000 sentences of different language pairs}
+  \label{tab:data_volume_impact}
+  \resizebox{\linewidth}{!}{
+    \begin{tabular}{@{}rccc@{}}
+      \toprule
+      Language Pair & Training Sentences & BLEU & BLEU Contribution per 10000 Sentences \\
+      \midrule
+      fr-en & 297,874 & 4.04 & 0.136 \\
+      cs-en & 294,966 & 4.03 & 0.137 \\
+      de-en & 297,505 & 3.01 & 0.101 \\
+      ru-en & 288,795 & 2.06 & 0.071 \\
+      hi-en & 6,671 & 0.07 & 0.105 \\
+      \bottomrule
+    \end{tabular}
+  }
+\end{table}
+
+Analysis shows that although the total BLEU value of hi-en language is extremely low, its "BLEU contribution per 10000 sentences" (0.105) is higher than that of ru-en (0.071), indicating that the language difficulty of Hindi itself is not the core obstacle, and insufficient data is the main reason for performance lag - when the data size is extremely limited, even if the language complexity is not high, the model is difficult to fully learn. In contrast, cs-en and fr-en achieved higher unit data utilization rates with sufficient data and language similarity, confirming the rule that "data volume and language affinity jointly determine translation difficulty".
+
+\section{LoRA-Fine-tuned Large Model Experiment}
+Based on the experimental results of traditional deep learning models mentioned earlier, although Seq2Seq performs stably in some languages, its overall performance is limited, while Transformer suffers from severe mode collapse due to training configuration and other issues. This reflects the inherent shortcomings of traditional small models in cross language generalization and low resource scenario adaptation. To this end, this experiment adopts the LoRA (Low Rank Adaptation) scheme to fine tune the pre trained large model, in order to alleviate the limitations of traditional models. Specifically, based on a multilingual pre trained large model (such as mBART base), the same 5 language pairs, BLEU+METEOR evaluation indicators and training data as the traditional model are used. Through a low rank adaptation lightweight fine-tuning method, the translation performance improvement of the large model for different difficulty language pairs is explored without significantly increasing computational costs, while verifying the effectiveness of the fine-tuning strategy in low resource and high language difference scenarios.
+
+\subsection{Experiment Environment}
+
+The experiment was executed on a computing node with the following hardware specifications:
+
+\begin{table}[htbp]
+  \centering
+  \caption{Hardware Configuration}
+  \label{tab:hardware_config}
+  \resizebox{\linewidth}{!}{
+    \begin{tabular}{@{}lc@{}}
+      \toprule
+      Hardware Component & Specifications \\
+      \midrule
+      Image & PyTorch 2.5.1 (Python 3.12, Ubuntu 22.04, CUDA 12.4) \\
+      GPU & 1 × vGPU-48GB (48GB memory) \\
+      CPU & 12 vCPUs (Intel(R) Xeon(R) Gold 6459C) \\
+      Memory & 90GB \\
+      Hard Disk & 30GB (system disk) \\
+      \bottomrule
+    \end{tabular}
+  }
+\end{table}
+
+All experimental implementations relied on Python, with the following required packages and their minimum versions:
+
+\begin{table}[htbp]
+  \centering
+  \caption{Software Dependencies}
+  \label{tab:software_deps}
+  \resizebox{\linewidth}{!}{
+    \begin{tabular}{@{}lc@{}}
+      \toprule
+      Package Name & Minimum Version \\
+      \midrule
+      accelerate & $\geq 0.30.1$ \\
+      bitsandbytes & $\geq 0.42.0$ \\
+      datasets & $\geq 2.19.0$ \\
+      evaluate & $\geq 0.4.2$ \\
+      peft & $\geq 0.11.1$ \\
+      protobuf & $\geq 4.25.3$ \\
+      pyyaml & $\geq 6.0.1$ \\
+      sacrebleu & $\geq 2.4.2$ \\
+      sentencepiece & $\geq 0.2.0$ \\
+      tensorboard & $\geq 2.17.0$ \\
+      torch & $\geq 2.2.0$ \\
+      transformers & $\geq 4.41.2$ \\
+      \bottomrule
+    \end{tabular}
+  }
+\end{table}
+
+\subsection{Evaluation Metrics}
+Consistent with the evaluation protocol in the previous section (traditional deep learning model experiment), this experiment uses BLEU (bilingual evaluation learning deficiency) metric as the only quantitative indicator to measure translation performance. The specific calculation method, parameter configuration (e.g. tagging=13a standard, 1-4 gram coverage), and implementation tool (SacreBLEU) remain unchanged, ensuring the comparability of the two experimental results.
+
+\subsection{Training Process Visualization}
+There is a visual comparison of the training process for fieve language pairs(en-fr, en-ru, en-de, en-cs, en-hi). According to the figure \ref{fig:train loss comparison}, The overall tend shows a decrease. And then they wave in a small range. It shows that the model converges effectively in each task. Limited by different data, the loss value of each task also varies. The loss of en-hi decreased the fastest. The losses of en-de and en-Ru fluctuate greatly.
+
+At the initial stage, the learning rate is high, which promotes the rapid reduction of losses. As the learning rate gradually decreases to near zero, the loss also enters a stable fluctuation period. The learning rate decay strategy effectively adapts to the training rhythm of different language pairs. High resource, low complexity tasks (such as en-fr) can achieve convergence through short-term learning rate decay, while medium and low resource, high complexity tasks (such as en-de) need a longer learning rate decay period to support the full reduction of losses.
+
+By \ref{fig:eval loss comparison}, the verification loss and training loss of most language pairs show the consistency of "synchronous decline and synchronous stability", but the verification loss of some low resource/high complexity tasks fluctuates more significantly, reflecting the difference in model generalization ability.
+
+On the whole, the trend of validation loss is highly related to training loss At the initial stage, the verification loss decreases rapidly with the training loss. After the training loss is stable, the verification loss also enters a relatively stable interval, which indicates that the training effect of the model on most tasks can be effectively generalized to the verification set.
+
+
+\subsection{Evaluation Results for Each Language}
+\subsubsection{Evaluation Results Description}
+From the experimental results in \ref{tab:evaluation results of lora}, the model shows performance stratification in translation tasks of different language pairs.
+
+The BLEU score of English French (en fr) task was the highest (34.41), and the performance was the best. The scores of English → Russian (en ru), English → German (en de), English → Czech (en cs) are in the middle range (21.29~27.15), with basic translation ability but room for improvement. English → Hindi (en hi) scored significantly lower (12.88), which was the weakest language pair in this experiment. On the whole, the model has basic adaptability in cross language translation tasks, but the performance of different language pairs differs significantly, showing an uneven distribution of "high medium low".
+
+According to \ref{fig:eval bleu comparison}, the trend of the BLEU curve of the verification set is highly consistent with the change of training/verification losses, and clearly presents the differences in translation performance of different language pairs: the BLEU of all tasks rises rapidly from a low value and then tends to be stable, but the stratification and fluctuation of the final performance directly reflects the differences in task difficulty and model adaptability.
+
+BLEU of en-de has a longer rising cycle, with small fluctuations in the process, and finally stabilized at about 24.5, reflecting that the task requires more training steps to improve the quality of translation.
+
+The rising process of BLEU of en-hi fluctuates violently (even drops briefly), and it is only stable in the low range of about 13. It is the task with the weakest performance and also corresponds to the problem that its verification loss fluctuates greatly.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{Training Loss Comparison.png} % 替换为Transformer单独图路径
+  \caption{LoRA Training Loss Comparison}
+  \label{fig:train loss comparison}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{Training Learning Rate Comparison.png} % 替换为Transformer单独图路径
+  \caption{LoRA Training Learning Rate Comparison}
+  \label{fig:train learning rate comparison}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{Evaluation Loss Comparison.png} % 替换为Transformer单独图路径
+  \caption{LoRA Evaluation Loss Comparison}
+  \label{fig:eval loss comparison}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Evaluation results of LoRA on different language pairs}
+  \label{tab:evaluation results of lora}
+  \resizebox{\linewidth}{!}{
+    \begin{tabular}{@{}lc@{}}
+      \toprule
+      Language Pairs & BLEU \\
+      \midrule
+      en-fr & 34.41 \\
+      en-ru & 27.15 \\
+      en-de & 24.53 \\
+      en-cs & 21.29 \\
+      en-hi & 12.88 \\
+      \bottomrule
+    \end{tabular}
+  }
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{Evaluation BLEU Comparison.png} % 替换为Transformer单独图路径
+  \caption{LoRA Evaluation BLEU Comparison}
+  \label{fig:eval bleu comparison}
+\end{figure}
+
+\subsubsection{Analysis}
+Performance differences can be deeply analyzed from five dimensions: language characteristics, dataset size, pre training data coverage, LoRA fine tuning adaptability, and evaluation index bias.
+
+\begin{itemize}
+\item Language chatacteristics: language similarity determines the difficulty of basic translation. English and French belong to the Indo European language family. The grammatical framework (such as tense, subject predicate object order) and lexical overlap are high. Bilingual mapping can be completed with only a few semantic transformations in the translation process. The task is the least difficult. Although Russian, German and Czech belong to the Indo European language family, they belong to different language families (Russian belongs to the Slavic language family, German belongs to the Germanic language family). They are significantly different from English grammar rules (such as German "box structure", Russian "noun case change") and vocabulary, and Czech/Russian has rich morphological inflection changes (such as verb change, noun case change), which increases the difficulty of capturing details in the model. The task is medium difficult. Although Hindi belongs to the Indo European language family, it belongs to the Indo Aryan language family. It is very different from the English writing system (Latin alphabet vs Tiancheng script) and the basic word order (subject predicate object vs subject object predicate). At the same time, the overlap between Hindi vocabulary and English is less than 10\%. The model needs to complete the triple conversion of "writing+structure+vocabulary", which is the most difficult task.
+
+\item Dataset size: WMT14 resource imbalance directly affects the upper performance limit. The parallel corpus of en fr in WMT14 is more than 3 million sentence pairs, and the data is large in scale and high in quality (mainly from authoritative news media), providing sufficient bilingual mapping samples for the model to support its learning of accurate translation rules. The WMT14 parallel corpora of the three language pairs en ru, en de, and en cs are in the range of "100000 to 1000000" (for example, about 1.5 million sentence pairs of en de and about 800000 sentence pairs of en ru). The amount of data is enough to support the basic translation ability, but it does not reach the level of "full fitting", which limits the upper limit of performance. The parallel corpus of en hi in WMT14 is less than 100000 sentence pairs, and some of the corpus comes from low-quality machine translation alignment. The model cannot learn enough bilingual correspondence, which directly leads to the collapse of translation effect.
+
+\item Pre training data coverage: differences in language bias of MBART. Among MBART's pre training data, English, French, German and Russian monolingual/bilingual language materials account for a high proportion (more than 60\% of the pre training data in total). The model has strong representation ability for these languages and can quickly reuse pre training knowledge when fine-tuning. Czech and Hindi account for less than 5\% of the mBART pre training data, and the quality of monolingual data is low (mostly colloquial text). The basic representation of these languages in the model is weak, and there is a lack of sufficient "knowledge reserve" to support translation tasks when fine-tuning.
+
+\item LoRA fine-tuning adaptability: the ability boundary of lightweight fine-tuning is strongly related to language pairs. LoRA only needs to fine tune the low rank matrix of attention level to activate the existing en fr pre training knowledge in mBART to achieve efficient adaptation. The complexity of en ru, en de, and en cs language pairs is higher than that of en fr. LoRA's lightweight update (default parameter) can cover some adaptation requirements, but it cannot fully capture the differences in form and structure details, resulting in a medium performance range. The high complexity and low pre training coverage of Hindi exceed LoRA's ability of lightweight fine-tuning - the parameter capacity of the low rank matrix cannot make up for the "pre training knowledge gap+task complexity", and eventually the adaptation fails.
+
+\item Bias of evaluation indicators: the n-gram mechanism of BLEU magnifies the difference in scores. English and French have a high degree of overlap of words and phrases, and the n-gram sequence of translation results is highly matched with the reference translation, so BLEU scores tend to be high. Hindi and English have less lexical overlap and flexible word order. Even if the translation semantics are correct, the matching degree between n-gram sequence and reference translation is low, which directly leads to the underestimated BLEU score.
+\end{itemize}
+
+\subsection{Self-Reflection}
+\subsubsection{Tuning Practice from Natural Language Prompt to Special Token}
+In the initial fine-tuning stage of the English German machine translation task, we followed the mature paradigms of T5, GPT and other models, and used natural language Prompt (such as "translate en to de:") as the task instruction to guide mBART to perform translation. However, this strategy soon encountered a technical bottleneck. In the process of model training, Loss remained high and could not converge all the time. The BLEU value on the final verification set was only 12.7 (far below the benchmark level of similar tasks), and the training results were almost of no practical value.
+
+In view of this abnormal phenomenon, we have backtracked the background of mBART's pre training design. As a cross language model in the Pre LLM era, the core pre training task of mBART is denoising Auto encoder. Its cross language ability activation does not rely on natural language instructions, but accurately matches the encoder/decoder module of the corresponding language through [en\_XX] (English logo), [de\_DE] (German logo) and other special tokens (pure language ID). This means that the natural language Prompt is a "non native interaction mode" for mBART, and the model cannot effectively parse its instruction intent, which leads to task alignment failure.
+
+Based on this analysis, we have made targeted adjustments to the input format. Completely remove all natural language Prompt, strictly follow the original design logic of mBART, and unify the input into the format of [LangID] Text</s>(for example, the input of English source text is [en\_XX] The cat is on the mat</s>). After adjustment, the training efficiency of the model has been significantly improved: Loss decreased rapidly and converged steadily within three epochs, and the final verification set BLEU value has been raised to 24.53(in \ref{tab:evaluation results of lora}), reaching the benchmark level.
+
+This optimization practice confirms the key principle of large model fine-tuning. The pre training tasks and interaction paradigms of the target model are the core basis for task instruction design - only by adopting the instruction form of "native adaptation" of the model, can the effective alignment between task intention and model capability be achieved.
+
+\subsubsection{Matching and Tuning Rank Parameter and Syntax Complexity}
+In the cross language translation contrast experiment, we fixed the setting of Rank=16 to test the English French (En Fr) and English German (En De) tasks, and the results showed significant differences: En Fr's BLEU value reached 34+(excellent effect), but En De's performance was only at the general level.
+
+Further analysis shows that this difference stems from the differences in language distance and grammatical complexity: German adopts SOV word order, has variant rules, and has many long compounds. Its grammatical structure complexity is much higher than French, and its language difference with English is also greater. However, the parameter space corresponding to Rank=16 is limited, so it is impossible to fully fit the complex semantic mapping relationship between Britain and Germany, which ultimately leads to the model under fitting.
+
+To solve this problem, we increase Rank to 64 to expand the parameter capacity. After adjustment, the representation ability of the model for German complex structures was significantly enhanced, and the BLEU value of En De task was also improved
+
+This practice reveals that the Rank parameter setting of cross language translation needs to match the grammatical complexity of the target language - the farther the language is, the more complex the structure is, the larger the parameter space needs to support semantic mapping.
+
+\subsubsection{Collaborative Tuning of BF16 and LoRA Weights}
+At the end of the experiment, a group of paradoxical "weird phenomena" appeared: the BLEU value of the training verification set had reached 24.5, but when reasoning independently, the model either re read the source language English or output "zu zu zu" garbled code, completely deviating from the translation task.
+
+There are two spects reasons. 
+\begin{itemize}
+    \item Accuracy mismatch: bfloat16 is used in the training phase, but the default use of float32 is used for reasoning - while the weight update amount of LoRA  ( $\Delta W$) itself is very small, which is "smoothed" and invalid in the accuracy conversion process, resulting in the model degenerated into a base model that has not been fine tuned, which is reflected in the re reading of the source language.
+
+    \item Numerical collapse: the learning rate of 0.0003 is still used in the high rank ( $r=64$) scenario, and the LoRA weight value is abnormally enlarged; Combined with the default Scaling coefficient  ( $\frac{\alpha}{r}=2.0$ ), the final output Logits overflows, and after Softmax, the probability collapses completely to the high-frequency word "zu", forming garbled code.
+\end{itemize}
+
+We synchronously adjusted two settings: unifying the precision of bfloat16 for training and reasoning to avoid  ( $\Delta W$ ) loss; Reduce the learning rate to 0.00005, and adjust the scaling coefficient to  ( $\frac{\alpha}{r}=0.5$ ). After adjustment, the reasoning result returns to normal, the BLEU value is consistent with the verification set, and the garbled code and re reading phenomenon completely disappear.
+
+In LoRA fine-tuning, accuracy consistency, learning rate and rank matching, and scaling coefficient adaptation are three key constraints - mismatching of any ring will lead to cascading failures at the numerical level.
+
+\subsubsection{Dynamic Scaling during Reasoning}
+For the problem of numerical collapse in high rank scenarios in LoRA fine-tuning, the conventional solution is to reduce the learning rate and retrain, but this method is time-consuming and labor-intensive, and will offset the completed training progress.
+
+For this reason, we propose an innovative strategy of dynamically adjusting the scaling factor of LoRA in the reasoning phase: without modifying the model weight or retraining, we only dynamically scale the output of LoRA in the reasoning process. Specifically, adjust the default scaling coefficient directly from 2.0 to the range of 0.5~0.1. The reduction of the scaling factor effectively curbs the value overflow of Logits. The probability distribution after Softmax is restored reasonably. The model directly "recovers" the translation ability without retraining - the reasoning result is changed from "zuzuzuzu" garbled code to target language text conforming to syntax, and the BLEU value rebounds to the verification set level.
+
+The core value of this scheme is that it can quickly repair the training defects at the numerical level through lightweight parameter adjustment on the reasoning side without additional consumption of training resources, and provide an efficient emergency optimization idea for the post-processing of LoRA fine-tuning.
+
+\subsection{Disscussion}
+\subsubsection{LoRA Fine-tuning is More Than Training}
+At first, we thought that as long as the training script ran through and the validation set indicators reached the standard, LoRA fine-tuning would be completed. But when the independent reasoning script output garbled code, it realized that the link alignment between training and reasoning is as important an engineering link as the training itself.
+
+Just like "building a car but forgetting to adapt to the road" - parameters, precision and format in the training phase must be synchronized to the reasoning link intact. Even if the accuracy is changed from bfloat16 to float32, or the scaling factor of LoRA is omitted, the trained ability will "disappear", which also makes us realize that the fine tuning of large model is a complete closed-loop of "training+reasoning", rather than a single link of success.
+
+\subsubsection{High Rank LoRA is a "Double-edged Sword"}
+In order to adapt to the complex grammatical structure of German, we raised the rank of LoRA from 16 to 64, and the fitting ability of the model was indeed significantly enhanced (BLEU value of English German translation was increased). The parameter space corresponding to high rank is larger, and the sensitivity to learning rate also increases sharply. High rank LoRA is not "the bigger the better", it needs to be more cautious about the learning rate, otherwise the cost of ability improvement is out of control training.
+
+\subsubsection{Duplex of BF16}
+The purpose of selecting bfloat16 precision is to avoid numerical overflow during training, which really ensures the stable training. However, in actual use, it is found that it has precision limitations: the weight update amount $\Delta W$ caused by LoRA fine-tuning is extremely small. If the precision is switched to float32 in the reasoning stage, these small weight changes will be lost due to precision mismatch, resulting in the model degradation to the basic version without fine-tuning.
+
+The overflow prevention advantage of BF16 coexists with the disadvantage of precision loss. Therefore, the accuracy of training, model derivation and reasoning must be fully unified when using BF16, otherwise the original stability guarantee will lead to the failure of model fine-tuning effect.
+
+\subsection{Future}
+\subsubsection{Sample Balance and Enhancement of Low Resource Language Pairs}
+In the current experiment, there is a problem of uneven distribution of language pairs in the data set. Later, we will focus on data enhancement for low resource language pairs (such as minority language translation): on the one hand, we will use the migration ability of large-scale parallel corpora to expand the training samples of low resource languages through "cross language pseudo parallel data construction". On the other hand, back translation strategy is adopted to generate training data of low resource languages in reverse with the translation results of high resource language pairs as seeds. At the same time, noise injection (such as random replacement of low-frequency words) is combined to improve data diversity. The ultimate goal is to narrow the translation quality gap between low resource and high resource language pairs.
+
+\subsubsection{Comparison of Multilingual Translation Capabilities between Encoder-decoder and Decoder-only Models}
+This research only completed the fine-tuning experiment based on the mBART of the encoder decoder architecture, and will expand to the decoder only architecture (such as Llama, GPT type models): through the unified multilingual translation task setting, compare the performance differences of the two frameworks in the three dimensions of "long sentence translation coherence", "low resource language generalization" and "reasoning speed"; At the same time, it explores the instruction fine-tuning strategy of the decoder only model in multilingual translation (such as specifying the translation direction through natural language Prompt), and analyzes its adaptability and limitations in cross language tasks.
+
+\subsubsection{Dynamic Strategy and Multi Task Joint Optimization}
+According to the complexity of different language pairs, the rank and learning rate of LoRA are adaptively adjusted in the training process to achieve a dynamic balance between fitting ability and training stability. At the same time, try multi task joint fine-tuning (such as combining translation tasks with cross language text classification tasks), and use inter task transfer learning to improve the cross language representation ability of the model.
+
+
+\begin{thebibliography}{9}
+% 引用标记与正文 \cite{XXX} 完全对应
+\bibitem{Sutskever2014}
+I. Sutskever, O. Vinyals, and Q. V. Le, ``Sequence to sequence learning with neural networks,'' in \textit{Advances in Neural Information Processing Systems}, vol. 27, 2014.
+
+\bibitem{Bojar2014}
+O. Bojar, C. Buck, C. Federmann, B. Haddow, P. Koehn, C. Monz, et al., ``Findings of the 2014 workshop on statistical machine translation,'' in \textit{Proceedings of the Ninth Workshop on Statistical Machine Translation}, 2014, pp. 1--49.
+
+\bibitem{Vaswani2017}
+A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, et al., ``Attention is all you need,'' in \textit{Advances in Neural Information Processing Systems}, vol. 30, 2017.
+
+\bibitem{Hu2022}
+E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, et al., ``LoRA: Low-rank adaptation of large language models,'' in \textit{Proceedings of the International Conference on Learning Representations}, 2022.
+
+\bibitem{Papineni2002}
+K. Papineni, S. Roukos, T. Ward, and W. J. Zhu, ``BLEU: a method for automatic evaluation of machine translation,'' in \textit{Proceedings of the 40th Annual Meeting of the Association for Computational Linguistics}, 2002, pp. 311--318.
+\end{thebibliography}
+
+\end{document}
