@@ -13,9 +13,9 @@
 \frenchspacing
 \setlength{\pdfpagewidth}{8.5in}
 \setlength{\pdfpageheight}{11in}
-\pdfinfo{
-/Title (Insert Your Title Here)
-/Author (Put All Your Authors Here, Separated by Commas)}
+% \pdfinfo{
+% /Title (Insert Your Title Here)
+% /Author (Put All Your Authors Here, Separated by Commas)}
 \setcounter{secnumdepth}{0}  
  \begin{document}
 % The file aaai.sty is the style file for AAAI Press 
@@ -415,22 +415,22 @@ All experimental implementations relied on Python, with the following required p
 Consistent with the evaluation protocol in the previous section (traditional deep learning model experiment), this experiment uses BLEU (bilingual evaluation learning deficiency) metric as the only quantitative indicator to measure translation performance. The specific calculation method, parameter configuration (e.g. tagging=13a standard, 1-4 gram coverage), and implementation tool (SacreBLEU) remain unchanged, ensuring the comparability of the two experimental results.
 
 \subsection{Training Process Visualization}
-There is a visual comparison of the training process for fieve language pairs(en-fr, en-ru, en-de, en-cs, en-hi). According to the figure \ref{fig:train loss comparison}, The overall tend shows a decrease. And then they wave in a small range. It shows that the model converges effectively in each task. Limited by different data, the loss value of each task also varies. The loss of en-hi decreased the fastest. The losses of en-de and en-Ru fluctuate greatly.
+There is a visual comparison of the training process for fieve language pairs(en-fr, en-ru, en-de, en-cs, en-hi). According to the Figure \ref{fig:train loss comparison}, The overall tend shows a decrease. And then they wave in a small range. It shows that the model converges effectively in each task. Limited by different data, the loss value of each task also varies. The loss of en-hi decreased the fastest. The losses of en-de and en-Ru fluctuate greatly.
 
-At the initial stage, the learning rate is high, which promotes the rapid reduction of losses. As the learning rate gradually decreases to near zero, the loss also enters a stable fluctuation period. The learning rate decay strategy effectively adapts to the training rhythm of different language pairs. High resource, low complexity tasks (such as en-fr) can achieve convergence through short-term learning rate decay, while medium and low resource, high complexity tasks (such as en-de) need a longer learning rate decay period to support the full reduction of losses.
+At the initial stage, the learning rate is high, which promotes the rapid reduction of losses. As the learning rate gradually decreases to near zero, the loss also enters a stable fluctuation period. The learning rate decay strategy effectively adapts to the training rhythm of different language pairs. High resource, low complexity tasks (such as en-fr) can achieve convergence through short-term learning rate decay, while medium and low resource, high complexity tasks (such as en-de) need a longer learning rate decay period to support the full reduction of losses. Learning rates are showed in Figure \ref{fig:train learning rate comparison}
 
-By \ref{fig:eval loss comparison}, the verification loss and training loss of most language pairs show the consistency of "synchronous decline and synchronous stability", but the verification loss of some low resource/high complexity tasks fluctuates more significantly, reflecting the difference in model generalization ability.
+By Figure \ref{fig:eval loss comparison}, the verification loss and training loss of most language pairs show the consistency of "synchronous decline and synchronous stability", but the verification loss of some low resource/high complexity tasks fluctuates more significantly, reflecting the difference in model generalization ability.
 
 On the whole, the trend of validation loss is highly related to training loss At the initial stage, the verification loss decreases rapidly with the training loss. After the training loss is stable, the verification loss also enters a relatively stable interval, which indicates that the training effect of the model on most tasks can be effectively generalized to the verification set.
 
 
 \subsection{Evaluation Results for Each Language}
 \subsubsection{Evaluation Results Description}
-From the experimental results in \ref{tab:evaluation results of lora}, the model shows performance stratification in translation tasks of different language pairs.
+From the experimental results in Table \ref{tab:evaluation results of lora}, the model shows performance stratification in translation tasks of different language pairs.
 
 The BLEU score of English French (en fr) task was the highest (34.41), and the performance was the best. The scores of English → Russian (en ru), English → German (en de), English → Czech (en cs) are in the middle range (21.29~27.15), with basic translation ability but room for improvement. English → Hindi (en hi) scored significantly lower (12.88), which was the weakest language pair in this experiment. On the whole, the model has basic adaptability in cross language translation tasks, but the performance of different language pairs differs significantly, showing an uneven distribution of "high medium low".
 
-According to \ref{fig:eval bleu comparison}, the trend of the BLEU curve of the verification set is highly consistent with the change of training/verification losses, and clearly presents the differences in translation performance of different language pairs: the BLEU of all tasks rises rapidly from a low value and then tends to be stable, but the stratification and fluctuation of the final performance directly reflects the differences in task difficulty and model adaptability.
+According to Figure \ref{fig:eval bleu comparison}, the trend of the BLEU curve of the verification set is highly consistent with the change of training/verification losses, and clearly presents the differences in translation performance of different language pairs: the BLEU of all tasks rises rapidly from a low value and then tends to be stable, but the stratification and fluctuation of the final performance directly reflects the differences in task difficulty and model adaptability.
 
 BLEU of en-de has a longer rising cycle, with small fluctuations in the process, and finally stabilized at about 24.5, reflecting that the task requires more training steps to improve the quality of translation.
 
@@ -504,7 +504,7 @@ In the initial fine-tuning stage of the English German machine translation task,
 
 In view of this abnormal phenomenon, we have backtracked the background of mBART's pre training design. As a cross language model in the Pre LLM era, the core pre training task of mBART is denoising Auto encoder. Its cross language ability activation does not rely on natural language instructions, but accurately matches the encoder/decoder module of the corresponding language through [en\_XX] (English logo), [de\_DE] (German logo) and other special tokens (pure language ID). This means that the natural language Prompt is a "non native interaction mode" for mBART, and the model cannot effectively parse its instruction intent, which leads to task alignment failure.
 
-Based on this analysis, we have made targeted adjustments to the input format. Completely remove all natural language Prompt, strictly follow the original design logic of mBART, and unify the input into the format of [LangID] Text</s>(for example, the input of English source text is [en\_XX] The cat is on the mat</s>). After adjustment, the training efficiency of the model has been significantly improved: Loss decreased rapidly and converged steadily within three epochs, and the final verification set BLEU value has been raised to 24.53(in \ref{tab:evaluation results of lora}), reaching the benchmark level.
+Based on this analysis, we have made targeted adjustments to the input format. Completely remove all natural language Prompt, strictly follow the original design logic of mBART, and unify the input into the format of [LangID] Text</s>(for example, the input of English source text is [en\_XX] The cat is on the mat</s>). After adjustment, the training efficiency of the model has been significantly improved: Loss decreased rapidly and converged steadily within three epochs, and the final verification set BLEU value has been raised to 24.53(in Table \ref{tab:evaluation results of lora}), reaching the benchmark level.
 
 This optimization practice confirms the key principle of large model fine-tuning. The pre training tasks and interaction paradigms of the target model are the core basis for task instruction design - only by adopting the instruction form of "native adaptation" of the model, can the effective alignment between task intention and model capability be achieved.
 
@@ -552,14 +552,49 @@ The purpose of selecting bfloat16 precision is to avoid numerical overflow durin
 
 The overflow prevention advantage of BF16 coexists with the disadvantage of precision loss. Therefore, the accuracy of training, model derivation and reasoning must be fully unified when using BF16, otherwise the original stability guarantee will lead to the failure of model fine-tuning effect.
 
-\subsection{Future}
-\subsubsection{Sample Balance and Enhancement of Low Resource Language Pairs}
+\section{Performance Comparison}
+\subsection{Model Performance Comparison}
+Table \ref{tab:Performance Comparison with BLEU Scores} presents BLEU scores of three models (Seq2Seq, Transformer, LoRA-tuned mBART) on 5 language pairs from the WMT14 dataset. Across all pairs, LoRA (mBART) achieves the highest BLEU scores (12.88–34.41), Seq2Seq performs moderately (0.07–4.04), and Transformer yields near-zero scores (0.0007–0.0013).
+
+\begin{table}[htbp]
+  \centering
+  \caption{BLEU Scores of Translation Models Across Language Pairs}
+  \label{tab:Performance Comparison with BLEU Scores}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    Language Pair & Seq2Seq & Transformer & LoRA (mBART) \\
+    \midrule
+    cs-en         & 4.03         & 0.0008           & 21.29  \\
+    de-en         & 3.01         & 0.0009           & 24.53  \\
+    fr-en         & 4.04         & 0.0007           & 34.41  \\
+    hi-en         & 0.07         & 0.0010           & 12.88  \\
+    ru-en         & 2.06         & 0.0013           & 27.15  \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Analysis}
+\subsubsection{Model structure}
+\begin{itemize}
+  \item LoRA(mBART): The encoding and decoding architecture based on mBART is designed for cross language tasks and naturally adapts to multi language translation scenarios. LoRA's lightweight fine-tuning method (only updating the low rank matrix) can accurately adapt to specific translation tasks without destroying the pre training characteristics, avoiding the risk of overfitting of full fine-tuning.
+  \item Seq2Seq: It is a basic coding and decoding framework without pre training. It is simple in architecture design and lacks cross language adaptation ability. It can only learn basic sequence mapping rules and cannot deal with syntax and morphological differences of complex languages.
+  \item Transformer: It itself needs a lot of data to learn effective features, but the resource scale of WMT14 cannot meet its training needs, resulting in the model not learning the available translation ability.
+\end{itemize}
+
+\subsubsection{Pre Training Data Resource}
+\begin{itemize}
+  \item LoRA(mBART): In the pre training stage, mBART has covered a large number of multilingual corpora and accumulated rich cross language representation capabilities; LoRA fine-tuning requires only a small amount of data to activate these pre training knowledge, so it can quickly adapt to the translation tasks of different language pairs.
+  \item Others: There are no pre training. Only relying on wmt14 data for learning, the data size is limited, which is not enough to learn features.
+\end{itemize}
+
+\section{Future}
+\subsection{Sample Balance and Enhancement of Low Resource Language Pairs}
 In the current experiment, there is a problem of uneven distribution of language pairs in the data set. Later, we will focus on data enhancement for low resource language pairs (such as minority language translation): on the one hand, we will use the migration ability of large-scale parallel corpora to expand the training samples of low resource languages through "cross language pseudo parallel data construction". On the other hand, back translation strategy is adopted to generate training data of low resource languages in reverse with the translation results of high resource language pairs as seeds. At the same time, noise injection (such as random replacement of low-frequency words) is combined to improve data diversity. The ultimate goal is to narrow the translation quality gap between low resource and high resource language pairs.
 
-\subsubsection{Comparison of Multilingual Translation Capabilities between Encoder-decoder and Decoder-only Models}
+\subsection{Comparison of Multilingual Translation Capabilities between Encoder-decoder and Decoder-only Models}
 This research only completed the fine-tuning experiment based on the mBART of the encoder decoder architecture, and will expand to the decoder only architecture (such as Llama, GPT type models): through the unified multilingual translation task setting, compare the performance differences of the two frameworks in the three dimensions of "long sentence translation coherence", "low resource language generalization" and "reasoning speed"; At the same time, it explores the instruction fine-tuning strategy of the decoder only model in multilingual translation (such as specifying the translation direction through natural language Prompt), and analyzes its adaptability and limitations in cross language tasks.
 
-\subsubsection{Dynamic Strategy and Multi Task Joint Optimization}
+\subsection{Dynamic Strategy and Multi Task Joint Optimization}
 According to the complexity of different language pairs, the rank and learning rate of LoRA are adaptively adjusted in the training process to achieve a dynamic balance between fitting ability and training stability. At the same time, try multi task joint fine-tuning (such as combining translation tasks with cross language text classification tasks), and use inter task transfer learning to improve the cross language representation ability of the model.
 
 
